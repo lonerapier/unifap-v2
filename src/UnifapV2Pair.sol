@@ -6,47 +6,61 @@ import "solmate/utils/FixedPointMathLib.sol";
 import "solmate/utils/ReentrancyGuard.sol";
 import "./interfaces/IERC20.sol";
 import "./libraries/Math.sol";
-
-error InsufficientLiquidityMinted();
-error InsufficientLiquidityBurned();
-error SafeTransferFailed();
-error SwapToSelf();
-error InsufficientLiquidity();
-error InvalidAmount();
-error InvalidConstantProductFormula();
+import "./libraries/UQ112x112.sol";
 
 /// @title UnifapV2Pair
 /// @author Uniswap Labs
 /// @notice maintains a liquidity pool of a pair of tokens
 contract UnifapV2Pair is ERC20, ReentrancyGuard {
+    // ========= Custom Errors =========
+
+    error InsufficientLiquidityMinted();
+    error InsufficientLiquidityBurned();
+    error SafeTransferFailed();
+    error SwapToSelf();
+    error InsufficientLiquidity();
+    error InvalidAmount();
+    error InvalidConstantProductFormula();
+    error BalanceOverflow();
+
     // ========= Libraries =========
+
     using Math for uint256;
     using FixedPointMathLib for uint256;
 
     // ========= Constants =========
+
     uint256 public constant MINIMUM_LIQUIDITY = 1e3;
     bytes4 public constant SELECTOR =
         bytes4(keccak256("transfer(address,uint256"));
 
     // ========= State Variables =========
+
     address public token0;
     address public token1;
 
+    // reserves are tracked rather than balances to prevent price manipulation
+    // bit-packing is done to save gas
     uint112 public reserve0;
     uint112 public reserve1;
+    uint32 public blockTimestampLast;
+
+    uint256 public price0CumulativeLast;
+    uint256 public price1CumulativeLast;
 
     // ======== Events ========
     event Mint(address indexed _operator, uint256 _value);
     event Burn(address indexed _operator, uint256 _value);
-    event Sync(uint112 reserve0, uint112 reserve1);
     event Swap(
-        address sender,
+        address indexed sender,
         uint256 amount0Out,
         uint256 amount1Out,
-        address to
+        address indexed to
     );
+    event Sync(uint112 reserve0, uint112 reserve1);
 
     // ========= Constructor =========
+
     constructor(address _token0, address _token1)
         ERC20("UnizwapV2", "UNI-V2", 18)
     {
@@ -54,16 +68,22 @@ contract UnifapV2Pair is ERC20, ReentrancyGuard {
         token1 = _token1;
     }
 
+    // ========= Public Functions =========
+
+    /// @notice returns reserves and last synced block timestamp
+    /// @return reserve0 reserve of token 0
+    /// @return reserve1 reserve of token 1
+    /// @return blockTimestampLast block timestamp of last sync
     function getReserves()
         public
         view
         returns (
             uint112,
             uint112,
-            bytes32
+            uint32
         )
     {
-        return (reserve0, reserve1, 0);
+        return (reserve0, reserve1, blockTimestampLast);
     }
 
     /// @notice calculate the pool tokens for the given new liquidity amount
@@ -97,7 +117,7 @@ contract UnifapV2Pair is ERC20, ReentrancyGuard {
 
         _mint(to, liquidity);
 
-        _update(balance0, balance1);
+        _update(balance0, balance1, reserve0, reserve1);
 
         emit Mint(to, liquidity);
     }
@@ -127,7 +147,7 @@ contract UnifapV2Pair is ERC20, ReentrancyGuard {
         _safeTransfer(token0, to, amount0);
         _safeTransfer(token1, to, amount1);
 
-        _update(balance0 - amount0, balance1 - amount1);
+        _update(balance0 - amount0, balance1 - amount1, reserve0, reserve1);
 
         emit Burn(to, liquidity);
     }
@@ -158,19 +178,55 @@ contract UnifapV2Pair is ERC20, ReentrancyGuard {
         if (balance0 * balance1 < uint256(reserve0) * uint256(reserve1))
             revert InvalidConstantProductFormula();
 
-        _update(balance0, balance1);
+        _update(balance0, balance1, reserve0, reserve1);
 
         emit Swap(msg.sender, amount0Out, amount1Out, to);
     }
 
+    function sync() public {
+        _update(
+            IERC20(token0).balanceOf(address(this)),
+            IERC20(token1).balanceOf(address(this)),
+            reserve0,
+            reserve1
+        );
+    }
+
     // ========= Internal functions =========
 
-    /// @notice updates pool reserves
+    /// @notice updates pool reserves and price accumulators
     /// @param balance0 new balance of token0 in pool
     /// @param balance1 new balance of token1 in pool
-    function _update(uint256 balance0, uint256 balance1) internal {
+    /// @param _reserve0 reserve of token0 in pool
+    /// @param _reserve1 reserve of token1 in pool
+    function _update(
+        uint256 balance0,
+        uint256 balance1,
+        uint112 _reserve0,
+        uint112 _reserve1
+    ) internal {
+        if (balance0 > type(uint112).max || balance1 > type(uint112).max)
+            revert BalanceOverflow();
+
+        unchecked {
+            uint32 timeElapsed = uint32(block.timestamp) - blockTimestampLast;
+            if (timeElapsed > 0 && _reserve0 > 0 && _reserve1 > 0) {
+                price0CumulativeLast +=
+                    uint256(
+                        UQ112x112.uqdiv(UQ112x112.encode(_reserve1), reserve0)
+                    ) *
+                    timeElapsed;
+                price1CumulativeLast +=
+                    uint256(
+                        UQ112x112.uqdiv(UQ112x112.encode(_reserve0), _reserve1)
+                    ) *
+                    timeElapsed;
+            }
+        }
+
         reserve0 = uint112(balance0);
         reserve1 = uint112(balance1);
+        blockTimestampLast = uint32(block.timestamp);
 
         emit Sync(reserve0, reserve1);
     }

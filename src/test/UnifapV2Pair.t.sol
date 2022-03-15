@@ -7,6 +7,7 @@ import {stdError} from "forge-std/stdlib.sol";
 import {ERC20} from "solmate/tokens/ERC20.sol";
 import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
 import {UnifapV2Pair} from "../UnifapV2Pair.sol";
+import {UQ112x112} from "../libraries/UQ112x112.sol";
 
 contract MockUser {
     function addLiquidity(
@@ -51,6 +52,40 @@ contract TestUnifapV2Pair is DSTest {
         user = new MockUser();
         token0.mint(address(user), 10 ether);
         token1.mint(address(user), 10 ether);
+    }
+
+    function assertBlockTimestampLast(uint256 timestamp) public {
+        (, , uint32 lastBlockTimestamp) = pair.getReserves();
+
+        assertEq(timestamp, lastBlockTimestamp);
+    }
+
+    function getCurrentMarginalPrices()
+        public
+        view
+        returns (uint256 price0, uint256 price1)
+    {
+        (uint112 reserve0, uint112 reserve1, ) = pair.getReserves();
+
+        price0 = reserve0 > 0
+            ? uint256(UQ112x112.encode(reserve1)) / reserve0
+            : 0;
+        price1 = reserve1 > 0
+            ? uint256(UQ112x112.encode(reserve0)) / reserve1
+            : 0;
+    }
+
+    function assertCumulativePrices(uint256 price0, uint256 price1) public {
+        assertEq(
+            price0,
+            pair.price0CumulativeLast(),
+            "unexpected cumulative price 0"
+        );
+        assertEq(
+            price1,
+            pair.price1CumulativeLast(),
+            "unexpected cumulative price 1"
+        );
     }
 
     function assertPairReserves(uint256 _reserve0, uint256 _reserve1) public {
@@ -283,6 +318,18 @@ contract TestUnifapV2Pair is DSTest {
         assertPairReserves(4 ether, 3 ether);
     }
 
+    function testSwapUnderpriced() public {
+        token0.transfer(address(pair), 1 ether);
+        token1.transfer(address(pair), 1 ether);
+        pair.mint(address(this));
+
+        // transfer to maintain K
+        token1.transfer(address(pair), 1 ether);
+        pair.swap(0.4 ether, 0, address(user));
+
+        assertPairReserves(0.6 ether, 2 ether);
+    }
+
     function testSwapInvalidAmount() public {
         vm.expectRevert(abi.encodeWithSignature("InvalidAmount()"));
         pair.swap(0 ether, 0 ether, address(user));
@@ -295,6 +342,9 @@ contract TestUnifapV2Pair is DSTest {
 
         vm.expectRevert(abi.encodeWithSignature("InsufficientLiquidity()"));
         pair.swap(3 ether, 0 ether, address(user));
+
+        vm.expectRevert(abi.encodeWithSignature("InsufficientLiquidity()"));
+        pair.swap(0 ether, 3 ether, address(user));
     }
 
     function testSwapSwapToSelf() public {
@@ -304,6 +354,9 @@ contract TestUnifapV2Pair is DSTest {
 
         vm.expectRevert(abi.encodeWithSignature("SwapToSelf()"));
         pair.swap(1 ether, 0 ether, address(token0));
+
+        vm.expectRevert(abi.encodeWithSignature("SwapToSelf()"));
+        pair.swap(0 ether, 1 ether, address(token1));
     }
 
     function testSwapInvalidConstantProductFormula() public {
@@ -315,5 +368,74 @@ contract TestUnifapV2Pair is DSTest {
             abi.encodeWithSignature("InvalidConstantProductFormula()")
         );
         pair.swap(1 ether, 0 ether, address(user));
+
+        vm.expectRevert(
+            abi.encodeWithSignature("InvalidConstantProductFormula()")
+        );
+        pair.swap(0 ether, 1 ether, address(user));
+    }
+
+    function testCumulativePrices() public {
+        vm.warp(0);
+        token0.transfer(address(pair), 1 ether);
+        token1.transfer(address(pair), 1 ether);
+        pair.mint(address(this));
+
+        pair.sync();
+        assertCumulativePrices(0, 0);
+
+        (
+            uint256 currentPrice0,
+            uint256 currentPrice1
+        ) = getCurrentMarginalPrices();
+
+        vm.warp(1);
+        pair.sync();
+        assertBlockTimestampLast(1);
+        assertCumulativePrices(currentPrice0, currentPrice1);
+
+        vm.warp(2);
+        pair.sync();
+        assertBlockTimestampLast(2);
+        assertCumulativePrices(currentPrice0 * 2, currentPrice1 * 2);
+
+        vm.warp(3);
+        pair.sync();
+        assertBlockTimestampLast(3);
+        assertCumulativePrices(currentPrice0 * 3, currentPrice1 * 3);
+
+        user.addLiquidity(
+            address(pair),
+            address(token0),
+            address(token1),
+            2 ether,
+            3 ether
+        );
+
+        (uint256 newPrice0, uint256 newPrice1) = getCurrentMarginalPrices();
+
+        vm.warp(4);
+        pair.sync();
+        assertBlockTimestampLast(4);
+        assertCumulativePrices(
+            currentPrice0 * 3 + newPrice0,
+            currentPrice1 * 3 + newPrice1
+        );
+
+        vm.warp(5);
+        pair.sync();
+        assertBlockTimestampLast(5);
+        assertCumulativePrices(
+            currentPrice0 * 3 + newPrice0 * 2,
+            currentPrice1 * 3 + newPrice1 * 2
+        );
+
+        vm.warp(6);
+        pair.sync();
+        assertBlockTimestampLast(6);
+        assertCumulativePrices(
+            currentPrice0 * 3 + newPrice0 * 3,
+            currentPrice1 * 3 + newPrice1 * 3
+        );
     }
 }

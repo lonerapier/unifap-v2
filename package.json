@@ -1,7 +1,7 @@
 {
-    "name": "femplate",
-    "description": "Robust Template for Foundry Projects",
-    "author": "Andreas Bigger <andreas@nascent.xyz>",
+    "name": "unifap-v2",
+    "description": "uniswap-v2 x Foundry",
+    "author": "Uniswap Labs & @dsam82 <sambhavdusad24@gmail.com>",
     "license": "AGPL-3.0-only",
     "version": "1.5.0",
     "files": [
@@ -9,7 +9,7 @@
     ],
     "repository": {
         "type": "git",
-        "url": "git+https://github.com/abigger87/femplate.git"
+        "url": "git+https://github.com/dsam82/unifap-v2.git"
     },
     "devDependencies": {
         "hardhat": "^2.7.0",
