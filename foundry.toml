@@ -19,6 +19,7 @@ remappings = [
   "@std=lib/forge-std/src/",
   "@solmate=lib/solmate/src/",
   "@clones=lib/clones-with-immutable-args/src/",
+  "@openzeppelin=lib/openzeppelin-contracts/contracts/"
 ]
 
 # Extreme Fuzzing CI Profile :P
