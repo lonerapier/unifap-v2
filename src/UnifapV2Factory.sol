@@ -1,40 +1,76 @@
 // SPDX-License-Identifier: MIT
-pragma solidity >= 0.8.10;
+pragma solidity >=0.8.10;
 
 import "./UnifapV2Pair.sol";
-
-error IdenticalTokens();
-error InvalidToken();
-error PairAlreadyExists();
-
 import "./interfaces/IUnifapV2Pair.sol";
 
+/// @title UnifapV2Factory
+/// @author Uniswap Labs
+/// @notice Creates pool pairs of tokens
 contract UnifapV2Factory {
-	mapping(address => mapping(address => address)) public pairs;
-	address[] public allPairs;
+    // ========= Custom Errors =========
 
-	event PairCreated(address indexed token0, address indexed token1, address pair, uint);
+    error IdenticalTokens();
+    error InvalidToken();
+    error DuplicatePair();
 
-	function createPair(address tokenA, address tokenB) public returns (address pair) {
-		if (tokenA == tokenB) revert IdenticalTokens();
+    // ========= State Variables =========
 
-		(address token0, address token1) = tokenA < tokenB ? (tokenA, tokenB) : (tokenB, tokenA);
+    mapping(address => mapping(address => address)) public pairs;
+    address[] public allPairs;
 
-		if (token0 == address(0)) revert InvalidToken();
-		if (pairs[token0][token1] != address(0)) revert PairAlreadyExists();
+    // ========= Events =========
 
-		bytes memory bytecode = type(UnifapV2Pair).creationCode;
-		bytes32 salt = keccak256(abi.encodePacked(token0, token1));
-		assembly {
-			pair := create2(0, add(bytecode, 32), mload(bytecode), salt)
-		}
+    event PairCreated(
+        address indexed token0,
+        address indexed token1,
+        address pair,
+        uint256
+    );
 
-		IUnifapV2Pair(pair).initialize(token0, token1);
+    // ========= Public Helper Functions =========
 
-		pairs[token0][token1] = pair;
-		pairs[token1][token0] = pair;
-		allPairs.push(pair);
+    function getAllPairLength() external view returns (uint256) {
+        return allPairs.length;
+    }
 
-		emit PairCreated(token0, token1, pair, allPairs.length);
-	}
+    function getAllPairsIndex(uint256 index) external view returns (address) {
+        return allPairs[index];
+    }
+
+    // ========= Public Functions =========
+
+    /// @notice Creates a new pool of token pair
+    /// @param tokenA First token in the pair
+    /// @param tokenB Second token in the pair
+    /// @return pair Address of the pair created
+    function createPair(address tokenA, address tokenB)
+        public
+        returns (address pair)
+    {
+        if (tokenA == tokenB) revert IdenticalTokens();
+
+        (address token0, address token1) = tokenA < tokenB
+            ? (tokenA, tokenB)
+            : (tokenB, tokenA);
+
+        if (token0 == address(0)) revert InvalidToken();
+        if (pairs[token0][token1] != address(0)) revert DuplicatePair();
+
+        bytes memory bytecode = type(UnifapV2Pair).creationCode;
+        bytes32 salt = keccak256(abi.encodePacked(token0, token1));
+
+        // solhint-disable-next-line no-inline-assembly
+        assembly {
+            pair := create2(0, add(bytecode, 32), mload(bytecode), salt)
+        }
+
+        IUnifapV2Pair(pair).initialize(token0, token1);
+
+        pairs[token0][token1] = pair;
+        pairs[token1][token0] = pair;
+        allPairs.push(pair);
+
+        emit PairCreated(token0, token1, pair, allPairs.length);
+    }
 }
