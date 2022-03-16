@@ -61,9 +61,12 @@ contract UnifapV2Pair is ERC20, ReentrancyGuard {
 
     // ========= Constructor =========
 
-    constructor(address _token0, address _token1)
+    constructor()
         ERC20("UnizwapV2", "UNI-V2", 18)
     {
+    }
+
+    function initialize(address _token0, address _token1) external {
         token0 = _token0;
         token1 = _token1;
     }
