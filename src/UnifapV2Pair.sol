@@ -4,6 +4,7 @@ pragma solidity >=0.8.10;
 import "solmate/tokens/ERC20.sol";
 import "solmate/utils/FixedPointMathLib.sol";
 import "solmate/utils/ReentrancyGuard.sol";
+import "@openzeppelin/proxy/utils/Initializable.sol";
 import "./interfaces/IERC20.sol";
 import "./libraries/Math.sol";
 import "./libraries/UQ112x112.sol";
@@ -11,7 +12,7 @@ import "./libraries/UQ112x112.sol";
 /// @title UnifapV2Pair
 /// @author Uniswap Labs
 /// @notice maintains a liquidity pool of a pair of tokens
-contract UnifapV2Pair is ERC20, ReentrancyGuard {
+contract UnifapV2Pair is ERC20, ReentrancyGuard, Initializable {
     // ========= Custom Errors =========
 
     error InsufficientLiquidityMinted();
@@ -49,6 +50,7 @@ contract UnifapV2Pair is ERC20, ReentrancyGuard {
     uint256 public price1CumulativeLast;
 
     // ======== Events ========
+
     event Mint(address indexed _operator, uint256 _value);
     event Burn(address indexed _operator, uint256 _value);
     event Swap(
@@ -61,22 +63,21 @@ contract UnifapV2Pair is ERC20, ReentrancyGuard {
 
     // ========= Constructor =========
 
-    constructor()
-        ERC20("UnizwapV2", "UNI-V2", 18)
-    {
-    }
+    constructor() ERC20("UnifapV2", "UNIV2", 18) {}
 
-    function initialize(address _token0, address _token1) external {
+    // ========= Initializer =========
+
+    function initialize(address _token0, address _token1) external initializer {
         token0 = _token0;
         token1 = _token1;
     }
 
     // ========= Public Functions =========
 
-    /// @notice returns reserves and last synced block timestamp
-    /// @return reserve0 reserve of token 0
-    /// @return reserve1 reserve of token 1
-    /// @return blockTimestampLast block timestamp of last sync
+    /// @notice Returns reserves and last synced block timestamp
+    /// @return reserve0 Reserve of token 0
+    /// @return reserve1 Reserve of token 1
+    /// @return blockTimestampLast Block timestamp of last sync
     function getReserves()
         public
         view
@@ -89,10 +90,10 @@ contract UnifapV2Pair is ERC20, ReentrancyGuard {
         return (reserve0, reserve1, blockTimestampLast);
     }
 
-    /// @notice calculate the pool tokens for the given new liquidity amount
-    /// @dev if new pool is created, then minimum liquidity is 1e3 transfered to 0x0
-    /// @param to address to which pool tokens are minted
-    /// @return liquidity total liquidity minted
+    /// @notice Calculate the pool tokens for the given new liquidity amount
+    /// @dev If new pool is created, then minimum liquidity is 1e3 transfered to 0x0
+    /// @param to Address to which pool tokens are minted
+    /// @return liquidity Total liquidity minted
     function mint(address to) public nonReentrant returns (uint256 liquidity) {
         uint256 balance0 = IERC20(token0).balanceOf(address(this));
         uint256 balance1 = IERC20(token1).balanceOf(address(this));
@@ -125,11 +126,11 @@ contract UnifapV2Pair is ERC20, ReentrancyGuard {
         emit Mint(to, liquidity);
     }
 
-    /// @notice burns pool tokens of a particular address
-    /// @dev needs to transfer pool tokens to the pool first to be burnt
-    /// @param to address whose tokens are burned
-    /// @return amount0 amount of token0 burned
-    /// @return amount1 amount of token1 burned
+    /// @notice Burns pool tokens of a particular address
+    /// @dev Needs to transfer pool tokens to the pool first to be burnt
+    /// @param to Address whose tokens are burned
+    /// @return amount0 Amount of token0 burned
+    /// @return amount1 Amount of token1 burned
     function burn(address to)
         public
         nonReentrant
@@ -155,11 +156,11 @@ contract UnifapV2Pair is ERC20, ReentrancyGuard {
         emit Burn(to, liquidity);
     }
 
-    /// @notice swaps two tokens
-    /// @dev new balances should maintain the constant product formula
-    /// @param amount0Out amount of token0 to be transfered
-    /// @param amount1Out amount of token1 to be transfered
-    /// @param to address to which tokens are transfered
+    /// @notice Dwaps two tokens
+    /// @dev New balances should maintain the constant product formula
+    /// @param amount0Out Amount of token0 to be transfered
+    /// @param amount1Out Amount of token1 to be transfered
+    /// @param to Address o which tokens are transfered
     function swap(
         uint256 amount0Out,
         uint256 amount1Out,
@@ -186,6 +187,7 @@ contract UnifapV2Pair is ERC20, ReentrancyGuard {
         emit Swap(msg.sender, amount0Out, amount1Out, to);
     }
 
+    /// @notice Syncs reserves
     function sync() public {
         _update(
             IERC20(token0).balanceOf(address(this)),
@@ -197,11 +199,11 @@ contract UnifapV2Pair is ERC20, ReentrancyGuard {
 
     // ========= Internal functions =========
 
-    /// @notice updates pool reserves and price accumulators
-    /// @param balance0 new balance of token0 in pool
-    /// @param balance1 new balance of token1 in pool
-    /// @param _reserve0 reserve of token0 in pool
-    /// @param _reserve1 reserve of token1 in pool
+    /// @notice Updates pool reserves and price accumulators
+    /// @param balance0 New balance of token0 in pool
+    /// @param balance1 New balance of token1 in pool
+    /// @param _reserve0 Reserve of token0 in pool
+    /// @param _reserve1 Reserve of token1 in pool
     function _update(
         uint256 balance0,
         uint256 balance1,

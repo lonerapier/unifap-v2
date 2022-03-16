@@ -34,7 +34,7 @@ contract MockUser {
 }
 
 contract TestUnifapV2Pair is DSTest {
-    Vm public constant vm = Vm(HEVM_ADDRESS);
+    Vm internal constant vm = Vm(HEVM_ADDRESS);
 
     MockERC20 public token0;
     MockERC20 public token1;
@@ -44,7 +44,8 @@ contract TestUnifapV2Pair is DSTest {
     function setUp() public {
         token0 = new MockERC20("UnifapToken0", "UT0", 18);
         token1 = new MockERC20("UnifapToken1", "UT1", 18);
-        pair = new UnifapV2Pair(address(token0), address(token1));
+        pair = new UnifapV2Pair();
+        pair.initialize(address(token0), address(token1));
 
         token0.mint(address(this), 10 ether);
         token1.mint(address(this), 10 ether);
